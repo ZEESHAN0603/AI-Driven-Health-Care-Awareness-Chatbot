@@ -56,10 +56,10 @@ AI-Driven Healthcare Disease Assistant
 
 - Team Lead: S.Yogeshwari  
 - Member 1: N.Yasvanth Kumar
-- Member 2: S. Zeeshan ahmed ali  
-- Member 3: S.SUgaina
-- Member 4 : V. Vijaya Gowtham
-- Member 5 : T.Sugumaran
+- Member 2: S.Zeeshan ahmed ali  
+- Member 3: S.Sugaina
+- Member 4: V.Vijaya Gowtham
+- Member 5: T.Sugumaran
 
 ---
 
