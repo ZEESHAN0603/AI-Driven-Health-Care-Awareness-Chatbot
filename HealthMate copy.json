@@ -1,0 +1,1233 @@
+{
+  "name": "HealthMate copy",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "794f308e-a044-4290-9880-8a7dab60563c",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        144
+      ],
+      "id": "9d691a8c-3269-486b-b3c5-d6e6b6e64330",
+      "name": "Webhook",
+      "webhookId": "794f308e-a044-4290-9880-8a7dab60563c"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"latitude\":{{ $json.body.Latitude }} ,\n  \"longitude\": {{ $json.body.Longitude }},\n  \"radius\": 5000,\n  \"type\": \"hospital\",\n  \"API_Key\": \"YOUR_GOOGLE_PLACES_API_KEY\"\n} ",
+        "options": {}
+      },
+      "id": "716ac741-1c05-4d69-8ceb-1fb174355e0c",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        848,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://places.googleapis.com/v1/places:searchNearby",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Goog-Api-Key",
+              "value": "AIzaSyBEMv4FtvLkesK1vRxCETNdnpAD3VZpQWM"
+            },
+            {
+              "name": "X-Goog-FieldMask",
+              "value": "places.displayName,places.formattedAddress,places.location"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={\n  \"includedTypes\": [\"hospital\"],\n  \"maxResultCount\": 10,\n  \"locationRestriction\": {\n    \"circle\": {\n      \"center\": {\n        \"latitude\":{{ $('Set Input Parameters').item.json.latitude }} ,\n        \"longitude\":{{ $('Set Input Parameters').item.json.longitude }} \n      },\n      \"radius\": 3000.0\n    }\n  },\n  \"rankPreference\": \"DISTANCE\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1232,
+        128
+      ],
+      "id": "315b6301-0d00-4da5-9271-0c22241186ce",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const places = $json.places || [];\n\nconst defaultLat = $input.first().json.body.Latitude;\nconst defaultLng = $input.first().json.body.Longitude;\n\nlet message = \"\";\n\nplaces.forEach((place, index) => {\n  const name = place.displayName?.text || \"Unknown Place\";\n  const address = place.formattedAddress || \"Address not available\";\n\n  // Always use DEFAULT latitude & longitude\n  const latitude = defaultLat;\n  const longitude = defaultLng;\n\n  message += `${index + 1}️⃣ ${name}\\n`;\n  message += `📍 Address: ${address}\\n`;\n  message += `📌 Location: ${latitude}, ${longitude}\\n\\n`;\n});\n\nreturn [\n  {\n    json: {\n      whatsappMessage: message.trim()\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        128
+      ],
+      "id": "b4b9586c-6d1a-434d-932a-c2e86952426d",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const places = $json.places || [];\n\nconst defaultLat = 13.0826722;\nconst defaultLng = 80.2706243;\n\nlet message = \"\";\n\nplaces.forEach((place, index) => {\n  const name = place.displayName?.text || \"Unknown Place\";\n  const address = place.formattedAddress || \"Address not available\";\n\n  message += `${index + 1}️⃣ ${name}\\n`;\n  message += `📍 Address: ${address}\\n`;\n  message += `📌 Location: ${defaultLat}, ${defaultLng}\\n\\n`;\n});\n\nreturn [\n  {\n    json: {\n      whatsappMessage: message.trim()\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        128
+      ],
+      "id": "3e1f28c3-1323-451e-860e-45920c4989d7",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "from": "=+14155238886",
+        "to": "=+916381549409",
+        "toWhatsapp": true,
+        "message": "={{ $json.reply }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1696,
+        448
+      ],
+      "id": "6abad2ce-565e-4b9d-bd7c-8ccb6468e635",
+      "name": "Send an SMS/MMS/WhatsApp message",
+      "credentials": {
+        "twilioApi": {
+          "id": "DDUQzIw4pzhq1f5j",
+          "name": "maran"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload your data to test RAG",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload your file(s)",
+              "fieldType": "file",
+              "acceptFileTypes": "FAISS, pkl, zip",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -704,
+        1808
+      ],
+      "id": "47d7263f-6214-4af5-bb76-4c3aad9a8cd9",
+      "name": "Upload your file here",
+      "webhookId": "23b4de88-4209-4555-a878-831cbe5085cb"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        -256,
+        1968
+      ],
+      "id": "f4cb6a19-ec1a-417f-89c3-c8aba2dff8cd",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "content": "### 📚 Load Data Flow",
+        "height": 460,
+        "width": 700,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -752,
+        1760
+      ],
+      "typeVersion": 1,
+      "id": "7c2e80f8-7ecb-4f13-a1a8-24eb3acb0931",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "value": "vector_store_key",
+          "mode": "list",
+          "cachedResultName": "vector_store_key"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.2,
+      "position": [
+        -512,
+        1808
+      ],
+      "id": "f9937e76-bae3-4587-a2a3-7477f0c11f24",
+      "name": "Insert Data to Store"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "knowledge_base",
+        "toolDescription": "Use this knowledge base to answer questions from the user",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "vector_store_key"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        2064
+      ],
+      "id": "5ee052d8-960f-4327-a993-cc6b17ba316e",
+      "name": "Query Data Tool"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.Body }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        368,
+        1792
+      ],
+      "id": "c84ccd5d-c563-4d94-adab-7ae980e65e9e",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "content": "### 🐕 2. Retriever Flow",
+        "height": 460,
+        "width": 680,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        112,
+        1760
+      ],
+      "typeVersion": 1,
+      "id": "e37ec6dd-f1ad-440f-9c9b-af1f5ccd3123",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        2320
+      ],
+      "id": "4e105851-3a0f-4571-9f38-f9537c27f878",
+      "name": "Embeddings Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "jZbxSBsQMSydU8uv",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        240,
+        2000
+      ],
+      "id": "ff8471c3-824d-456c-9a41-481aaa7773f6",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "bg7mLwWWqkjxjcjx",
+          "name": "zeeshan"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {};\n\n// WhatsApp message text\nconst userMessage = (body.Body || \"\").toString().trim();\n\n// message type: \"text\" or \"location\"\nconst messageType = (body.MessageType || \"text\").toLowerCase();\n\n// use WhatsApp number as session id\nconst sessionId =\n  body.From || body.WaId || body.from || \"no-session\";\n\nreturn [\n  {\n    json: {\n      body,\n      userMessage,\n      messageType,\n      sessionId,\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        144
+      ],
+      "id": "e0a21117-8ab9-48ad-945c-81d02b8c0a5a",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9cd070a8-91b2-45bb-a124-80162c9a4164",
+              "leftValue": "={{ $json.body.MessageType }}",
+              "rightValue": "location",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        144
+      ],
+      "id": "b9fe3ad5-ab67-4215-91e0-a3a543bf5bd2",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json;\n\n// 1️⃣ If AI Agent output exists\nif (data.output) {\n  return [{\n    json: {\n      reply: data.output.trim()\n    }\n  }];\n}\n\n// 2️⃣ If Location branch output exists\nif (data.whatsappMessage) {\n  return [{\n    json: {\n      reply: data.whatsappMessage.trim()\n    }\n  }];\n}\n\n// 3️⃣ Fallback response\nreturn [{\n  json: {\n    reply: \"Sorry, I couldn't process your request.\"\n  }\n}];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        448
+      ],
+      "id": "56eb64b6-ac05-48e9-a633-f1e01625e3e9",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- READ CURRENT MESSAGE ----------\nconst rawInput =\n  $json.userMessage ||\n  $json.userQuestion ||\n  $json.chatInput ||\n  \"\";\n\n// Normalise\nconst question = rawInput.toString().trim();\nconst text = question.toLowerCase();\n\n// DB status & row from previous node (if you need later)\nconst hasRow  = $json.dbHasRow === true;\nconst dbRow   = $json.dbRow || null;\n\n// ---------- CATEGORY HINT FOR AGENT ----------\nlet categoryHint = \"general\";\n\n// ❶ Disease & Symptoms\nif (\n  text.includes(\"disease\") ||\n  text.includes(\"symptom\") ||\n  text.includes(\"diagnose\") ||\n  text.includes(\"diagnosis\") ||\n  text.includes(\"infection\") ||\n  text.includes(\"fever\") ||\n  text.includes(\"cough\") ||\n  text.includes(\"cold\") ||\n  text.includes(\"pain\") ||\n  text.includes(\"risk\")\n) {\n  categoryHint = \"disease\";\n}\n\n// ❷ Women Nutrition & Maternal Health\nelse if (\n  text.includes(\"women\") ||\n  text.includes(\"woman\") ||\n  text.includes(\"pregnancy\") ||\n  text.includes(\"pregnant\") ||\n  text.includes(\"breastfeeding\") ||\n  text.includes(\"nutrition\") ||\n  text.includes(\"supplement\") ||\n  text.includes(\"iron deficiency\") ||\n  text.includes(\"calcium\") ||\n  text.includes(\"folic acid\") ||\n  text.includes(\"pcos\") ||\n  text.includes(\"period\") ||\n  text.includes(\"menstrual\") ||\n  text.includes(\"maternal\")\n) {\n  categoryHint = \"women_nutrition\";\n}\n\n// ❸ Blood Tests & Lab Results\nelse if (\n  text.includes(\"blood test\") ||\n  text.includes(\"test report\") ||\n  text.includes(\"lab report\") ||\n  text.includes(\"cbc\") ||\n  text.includes(\"lft\") ||\n  text.includes(\"kft\") ||\n  text.includes(\"hemoglobin\") ||\n  text.includes(\"platelet\") ||\n  text.includes(\"vitamin d\") ||\n  text.includes(\"vitamin b12\") ||\n  text.includes(\"thyroid\") ||\n  text.includes(\"tsh\") ||\n  text.includes(\"t3\") ||\n  text.includes(\"t4\") ||\n  text.includes(\"hba1c\")\n) {\n  categoryHint = \"blood_test\";\n}\n\n// Attach fields for Agent\n$json.cleanedQuestion = question;\n$json.categoryHint    = categoryHint;\n\n// Bundle everything for optional use in Agent/system prompt\n$json.agentInput = {\n  question,\n  categoryHint,\n  dbHasRow: hasRow,\n  profile: dbRow,\n  sessionId: $json.sessionId,\n};\n\n// Output item back to workflow\nreturn [{ json: $json }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        448
+      ],
+      "id": "519abc26-e86d-4908-8d51-275f624bf51e",
+      "name": "Router Logic"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agentInput.question }}",
+        "options": {
+          "systemMessage": "You are a medical assistant that helps with:\n- diseases and symptoms\n- women’s nutrition and maternal health\n- blood tests and lab reports\n\nYou have access to three tools:\n- Disease Search Tool: for diseases/symptoms/conditions\n- Women Nutrition Tool: for diet, pregnancy nutrition, breastfeeding, PCOS, and supplements\n- Blood Test Tool: for blood tests, CBC, thyroid, sugar tests and lab reports\n\nWhen you get a question:\n1. Decide which tool, if any, is best.\n2. Call that tool with a clear query.\n3. Read the tool results and answer in simple language.\n4. If no tool is relevant, answer from your general medical knowledge (with safety).\n5. Keep answers short and easy to understand, 3–6 sentences.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        864,
+        448
+      ],
+      "id": "b2ccff94-e6bf-4f72-9dd8-e4e75151a797",
+      "name": "Main Bot Agent"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Technical documentation and code examples",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub1_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        160,
+        800
+      ],
+      "id": "77714054-d8fc-453d-8384-9ee4e20244a2",
+      "name": "Technical Knowledge"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Product pricing and sales information",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub2_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        1104
+      ],
+      "id": "7f038807-2fac-4fa2-810c-10068861097c",
+      "name": "Sales Knowledge"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Support documentation and troubleshooting guides",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub3_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        1840,
+        688
+      ],
+      "id": "38725ce4-8f46-4c4b-bf97-ced9aac3894e",
+      "name": "Support Knowledge"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub1_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        -224,
+        736
+      ],
+      "id": "6dcc3eae-3474-4ec6-84bd-3e5d205cfdde",
+      "name": "Insert Technical Data"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub2_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        688,
+        976
+      ],
+      "id": "72bf6c9f-0d98-4fd4-8e3e-bbf697992988",
+      "name": "Insert Sales Data"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub3_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        1360,
+        880
+      ],
+      "id": "d7a89ef0-ecf8-4e0a-a59a-4f6014826d3c",
+      "name": "Insert Support Data"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        -16,
+        880
+      ],
+      "id": "f18f9cdf-8d02-415f-8123-954e91294a68",
+      "name": "Loader Sub1"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        1200
+      ],
+      "id": "15c44bca-665a-44fb-abd1-ef238f06251c",
+      "name": "Loader Sub2"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1408,
+        1152
+      ],
+      "id": "9cd20cb1-ac81-48a1-bd32-04139cd824eb",
+      "name": "Loader Sub3"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1664,
+        1200
+      ],
+      "id": "16e79004-cb40-41de-b62a-854e27e8ae5c",
+      "name": "Embeddings Google Gemini2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D0lPkQo3DNLtUFiV",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        1040
+      ],
+      "id": "bc039a13-343a-4c23-b5ee-6b0879ee2a24",
+      "name": "Embeddings Google Gemini3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D0lPkQo3DNLtUFiV",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "storagre",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "bot_reply",
+              "fieldValue": "="
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2048,
+        448
+      ],
+      "id": "9ea4330e-637e-4ae0-afc8-68ffbd06e1c5",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "nJCYN0AiZfxFOvq5",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "storagre",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "bot_reply",
+              "condition": "neq",
+              "keyValue": "={{ $json.action }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        448
+      ],
+      "id": "b050d185-4193-4e86-9b84-a77bb1c7fc35",
+      "name": "Get many rows",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "nJCYN0AiZfxFOvq5",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload Data for disease",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload disease documentation",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        -400,
+        736
+      ],
+      "id": "fbbcd219-bb85-413d-9318-e43f46d5f047",
+      "name": "Upload Disease Data",
+      "webhookId": "078ae7a6-7141-4e85-b422-141755a01c0a"
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload Data for Women nutrient",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload women nutrient",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        432,
+        976
+      ],
+      "id": "d3e0a772-6866-47a5-8649-d0f951fca8a1",
+      "name": "Upload women nutrition Data",
+      "webhookId": "3110e65b-4b77-4b0a-b67f-5134c82d2269"
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload Data for blood test",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload blood test",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": " .csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        1200,
+        880
+      ],
+      "id": "414eeb86-8a7c-45f7-b451-2ac70780a945",
+      "name": "Upload health Data",
+      "webhookId": "f4d89fb7-9104-4796-92fd-78694109a207"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        896,
+        1344
+      ],
+      "id": "a4d97545-1664-47df-ac01-2e39a1dd3795",
+      "name": "When chat message received",
+      "webhookId": "b4d5c095-8d55-49ae-b38a-76f721c44b06"
+    },
+    {
+      "parameters": {
+        "message": "Hi 👋 I can connect you to:\n1. Disease Bot\n2. Women Nutrition Bot\n3. Blood Test Bot\n\nReply with 1/2/3",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        144,
+        448
+      ],
+      "id": "33d1c089-553b-4d0c-a815-5a45389e24d7",
+      "name": "Respond to Chat"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        768,
+        656
+      ],
+      "id": "bad4b4e3-bf4e-4eb6-b2d9-4b75e0fb6eaf",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ZM78C2oOwBCrLTVr",
+          "name": "Google Gemini(PaLM) Api account 9"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.dbRow.bot_reply }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        464,
+        448
+      ],
+      "id": "e9778ba6-1d8b-4bc9-ad46-9e8e79f3716f",
+      "name": "Respond to Chat2"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        688,
+        1424
+      ],
+      "id": "340a5142-563c-4f64-97ae-c92a21e0d253",
+      "name": "Embeddings Google Gemini1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D0lPkQo3DNLtUFiV",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get normalized message\nconst chat = $json || {};\nconst userMessage = (chat.userMessage || \"\").toString().trim();\nconst text = userMessage.toLowerCase();\n\n// Supabase result (single row)\nconst dbRow = $node[\"Get many rows\"]?.json || null;\nconst hasRow = !!dbRow;\n\n// session id from earlier\nconst sessionId = chat.sessionId || \"no-session\";\n\nlet state = dbRow?.state || null;          // \"awaiting_choice\" | \"chatting\" | null\nlet preferredBot = dbRow?.preferred_bot || null;\nlet mode = \"chat\";\n\n// 1) first time user → send menu\nif (!hasRow) {\n  mode = \"send_menu\";\n  state = \"awaiting_choice\";\n}\n\n// 2) waiting for bot choice\nelse if (state === \"awaiting_choice\") {\n  if (text === \"1\" || text.includes(\"disease\")) {\n    preferredBot = \"disease\";\n  } else if (text === \"2\" || text.includes(\"women\") || text.includes(\"nutrition\")) {\n    preferredBot = \"women_nutrition\";\n  } else if (text === \"3\" || text.includes(\"blood\") || text.includes(\"lab\")) {\n    preferredBot = \"blood_test\";\n  }\n\n  if (preferredBot) {\n    mode = \"save_choice\";\n    state = \"chatting\";\n  } else {\n    mode = \"send_menu\";\n    state = \"awaiting_choice\";\n  }\n}\n\n// 3) already chatting\nelse {\n  mode = \"chat\";\n}\n\nreturn [\n  {\n    json: {\n      sessionId,\n      userMessage,\n      state,\n      preferredBot,\n      mode,\n      dbRow,\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        448
+      ],
+      "id": "0ea2479a-9b16-4285-a1d2-ba6a793929ca",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read Chat Trigger output safely\nconst chat = $node[\"When chat message received\"]?.json || {};\n\n// Extract details\nconst sessionId = chat.sessionId || \"no-session\";\nconst userMessage = chat.chatInput || \"\";\n\n// Get previous node output (if needed)\nconst previousOutput = $input.first()?.json?.output || null;\n\n// Return for next nodes\nreturn [\n  {\n    json: {\n      sessionId,\n      userMessage,\n      previousOutput,   // <-- this is valid\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        448
+      ],
+      "id": "acf1827a-b12c-4c4c-b7df-a3f57370942a",
+      "name": "Code in JavaScript5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload your file here": {
+      "main": [
+        [
+          {
+            "node": "Insert Data to Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Data to Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Data Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Data to Store",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Query Data Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Send an SMS/MMS/WhatsApp message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router Logic": {
+      "main": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Main Bot Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Technical Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sales Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Support Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loader Sub1": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Technical Data",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loader Sub2": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Sales Data",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loader Sub3": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Support Data",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini2": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Support Data",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Support Knowledge",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini3": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Technical Data",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Technical Knowledge",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Disease Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Technical Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload women nutrition Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Sales Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload health Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Support Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        []
+      ]
+    },
+    "Respond to Chat": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Chat2": {
+      "main": [
+        [
+          {
+            "node": "Router Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Sales Data",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Sales Knowledge",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an SMS/MMS/WhatsApp message": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c64bd71f-5c47-4e14-b67e-09735d5f82e2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0544543afe640398040389137570d256628d63fef25ed25aacde0f830115f22a"
+  },
+  "id": "3CWTfVOy5MdUbdiC",
+  "tags": []
+}

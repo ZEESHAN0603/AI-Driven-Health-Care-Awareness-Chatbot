@@ -1,0 +1,808 @@
+{
+  "name": "Multi-Bot RAG System HealthMate",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// ---------- READ CURRENT MESSAGE ----------\nconst rawInput =\n  $json.userMessage ||\n  $json.userQuestion ||\n  $json.chatInput ||\n  \"\";\n\n// Normalise\nconst question = rawInput.toString().trim();\nconst text = question.toLowerCase();\n\n// DB status & row from previous node (if you need later)\nconst hasRow  = $json.dbHasRow === true;\nconst dbRow   = $json.dbRow || null;\n\n// ---------- CATEGORY HINT FOR AGENT ----------\nlet categoryHint = \"general\";\n\n// ❶ Disease & Symptoms\nif (\n  text.includes(\"disease\") ||\n  text.includes(\"symptom\") ||\n  text.includes(\"diagnose\") ||\n  text.includes(\"diagnosis\") ||\n  text.includes(\"infection\") ||\n  text.includes(\"fever\") ||\n  text.includes(\"cough\") ||\n  text.includes(\"cold\") ||\n  text.includes(\"pain\") ||\n  text.includes(\"risk\")\n) {\n  categoryHint = \"disease\";\n}\n\n// ❷ Women Nutrition & Maternal Health\nelse if (\n  text.includes(\"women\") ||\n  text.includes(\"woman\") ||\n  text.includes(\"pregnancy\") ||\n  text.includes(\"pregnant\") ||\n  text.includes(\"breastfeeding\") ||\n  text.includes(\"nutrition\") ||\n  text.includes(\"supplement\") ||\n  text.includes(\"iron deficiency\") ||\n  text.includes(\"calcium\") ||\n  text.includes(\"folic acid\") ||\n  text.includes(\"pcos\") ||\n  text.includes(\"period\") ||\n  text.includes(\"menstrual\") ||\n  text.includes(\"maternal\")\n) {\n  categoryHint = \"women_nutrition\";\n}\n\n// ❸ Blood Tests & Lab Results\nelse if (\n  text.includes(\"blood test\") ||\n  text.includes(\"test report\") ||\n  text.includes(\"lab report\") ||\n  text.includes(\"cbc\") ||\n  text.includes(\"lft\") ||\n  text.includes(\"kft\") ||\n  text.includes(\"hemoglobin\") ||\n  text.includes(\"platelet\") ||\n  text.includes(\"vitamin d\") ||\n  text.includes(\"vitamin b12\") ||\n  text.includes(\"thyroid\") ||\n  text.includes(\"tsh\") ||\n  text.includes(\"t3\") ||\n  text.includes(\"t4\") ||\n  text.includes(\"hba1c\")\n) {\n  categoryHint = \"blood_test\";\n}\n\n// Attach fields for Agent\n$json.cleanedQuestion = question;\n$json.categoryHint    = categoryHint;\n\n// Bundle everything for optional use in Agent/system prompt\n$json.agentInput = {\n  question,\n  categoryHint,\n  dbHasRow: hasRow,\n  profile: dbRow,\n  sessionId: $json.sessionId,\n};\n\n// Output item back to workflow\nreturn [{ json: $json }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        -2272
+      ],
+      "id": "14f398a9-b27e-443d-a9ae-aa077e9863d8",
+      "name": "Router Logic"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agentInput.question }}",
+        "options": {
+          "systemMessage": "You are a medical assistant that helps with:\n- diseases and symptoms\n- women’s nutrition and maternal health\n- blood tests and lab reports\n\nYou have access to three tools:\n- Disease Search Tool: for diseases/symptoms/conditions\n- Women Nutrition Tool: for diet, pregnancy nutrition, breastfeeding, PCOS, and supplements\n- Blood Test Tool: for blood tests, CBC, thyroid, sugar tests and lab reports\n\nWhen you get a question:\n1. Decide which tool, if any, is best.\n2. Call that tool with a clear query.\n3. Read the tool results and answer in simple language.\n4. If no tool is relevant, answer from your general medical knowledge (with safety).\n5. Keep answers short and easy to understand, 3–6 sentences.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        672,
+        -2272
+      ],
+      "id": "ec9703ae-ee4c-4ef5-9f08-411a61772ae8",
+      "name": "Main Bot Agent"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Technical documentation and code examples",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub1_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        -32,
+        -1920
+      ],
+      "id": "b8b554c2-f680-43b6-8f2a-f2fb41f4a0ab",
+      "name": "Technical Knowledge"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Product pricing and sales information",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub2_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        -1616
+      ],
+      "id": "d789677c-5b46-4308-a29d-c4c13654d326",
+      "name": "Sales Knowledge"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Support documentation and troubleshooting guides",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub3_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        1648,
+        -2032
+      ],
+      "id": "064c0ed8-9d45-4ee3-b65e-6f0a5a084188",
+      "name": "Support Knowledge"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub1_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        -416,
+        -1984
+      ],
+      "id": "c08abc67-6078-43d3-95b8-463af5ac64aa",
+      "name": "Insert Technical Data"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub2_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        -1744
+      ],
+      "id": "d78cf3e1-85a8-4465-8534-40410f3ec9d8",
+      "name": "Insert Sales Data"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "sub3_bot_store"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        1168,
+        -1840
+      ],
+      "id": "222bdbe6-0d30-4751-9384-3412556a1089",
+      "name": "Insert Support Data"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        -208,
+        -1840
+      ],
+      "id": "aed42f3b-3e7f-4ad0-ab97-b76cac20f2c4",
+      "name": "Loader Sub1"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        -1520
+      ],
+      "id": "dd39accb-f086-434e-887f-fa2b37e8455a",
+      "name": "Loader Sub2"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        -1568
+      ],
+      "id": "e11c20b4-fe75-4231-87cb-6efc40e97609",
+      "name": "Loader Sub3"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        496,
+        -1296
+      ],
+      "id": "077e21cf-86c1-4954-83f9-293dc986bcfa",
+      "name": "Embeddings Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D0lPkQo3DNLtUFiV",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1472,
+        -1520
+      ],
+      "id": "61ec73be-6774-4a43-9bd0-6b08a125add5",
+      "name": "Embeddings Google Gemini2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D0lPkQo3DNLtUFiV",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        -1680
+      ],
+      "id": "14205d5a-5e46-4185-9781-23a7e05c5332",
+      "name": "Embeddings Google Gemini3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D0lPkQo3DNLtUFiV",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "storagre",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "bot_reply",
+              "fieldValue": "="
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        -2272
+      ],
+      "id": "3febf46d-b817-4af4-b11e-87d615124eb4",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "nJCYN0AiZfxFOvq5",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtMinute": 59
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -384,
+        -2512
+      ],
+      "id": "0c631550-dd71-46d4-889d-d359dc1cd129",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "women_nutrients"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -2512
+      ],
+      "id": "18c97dd2-c13d-4408-a4d3-5a252feec9f7",
+      "name": "Delete a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "nJCYN0AiZfxFOvq5",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get chat + any existing DB row (from Supabase \"Get many rows\")\nconst chat = $node[\"When chat message received\"]?.json || {};\nconst supaItems = $node[\"Get many rows\"]?.json || {};\n\nconst userMessage = (chat.chatInput || chat.userMessage || \"\").toString().trim();\nconst text = userMessage.toLowerCase();\n\nconst sessionId =\n  chat.sessionId ||\n  chat.userId ||\n  chat.phoneNumber ||\n  \"no-session\";\n\n// Existing row from Supabase (if any)\nconst dbRow = supaItems || null;\nconst hasRow = !!dbRow;\n\n// Default state\nlet state = dbRow?.state || null;          // \"awaiting_choice\" | \"chatting\" | null\nlet preferredBot = dbRow?.preferred_bot || null;\n\n// MODE tells workflow what to do with this message\n// \"send_menu\" | \"save_choice\" | \"chat\"\nlet mode = \"chat\";\n\n// 1) If no row yet → first time user → send menu\nif (!hasRow) {\n  mode = \"send_menu\";\n  state = \"awaiting_choice\";\n}\n\n// 2) If we are waiting for user to choose a bot\nelse if (state === \"awaiting_choice\") {\n  // map user's reply to a bot (numbers OR words)\n  if (text === \"1\" || text.includes(\"disease\")) {\n    preferredBot = \"disease\";\n  } else if (text === \"2\" || text.includes(\"women\") || text.includes(\"nutrition\")) {\n    preferredBot = \"women_nutrition\";\n  } else if (text === \"3\" || text.includes(\"blood\") || text.includes(\"lab\")) {\n    preferredBot = \"blood_test\";\n  }\n\n  if (preferredBot) {\n    mode = \"save_choice\";   // we got a valid selection\n    state = \"chatting\";\n  } else {\n    // still wrong reply → ask again\n    mode = \"send_menu\";\n    state = \"awaiting_choice\";\n  }\n}\n\n// 3) If already chatting → normal chat flow\nelse {\n  mode = \"chat\";\n}\n\n// Output for next nodes\nreturn [\n  {\n    json: {\n      sessionId,\n      userMessage,\n      state,\n      preferredBot,\n      mode,\n      dbRow,\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        -2272
+      ],
+      "id": "8d45131b-5928-4c31-b897-c70ab69aec0f",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read Chat Trigger output safely\nconst chat = $node[\"When chat message received\"]?.json || {};\n\n// Extract details\nconst sessionId = chat.sessionId || \"no-session\";\nconst userMessage = chat.chatInput || \"\";\n\n// Get previous node output (if needed)\nconst previousOutput = $input.first()?.json?.output || null;\n\n// Return for next nodes\nreturn [\n  {\n    json: {\n      sessionId,\n      userMessage,\n      previousOutput,   // <-- this is valid\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        -2272
+      ],
+      "id": "ea6fde29-2f8c-4f34-b1f3-5fc4fc49cf76",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "storagre",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "bot_reply",
+              "condition": "neq",
+              "keyValue": "={{ $json.action }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -2272
+      ],
+      "id": "c557bcc6-c257-4373-91a4-08c558f397eb",
+      "name": "Get many rows",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "nJCYN0AiZfxFOvq5",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload Data for disease",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload disease documentation",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        -592,
+        -1984
+      ],
+      "id": "ce4cfd59-764e-4695-a926-f6b6e380d29d",
+      "name": "Upload Disease Data",
+      "webhookId": "078ae7a6-7141-4e85-b422-141755a01c0a"
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload Data for Women nutrient",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload women nutrient",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        -1744
+      ],
+      "id": "eadca3fa-8b3d-4421-b489-036e11af2c6f",
+      "name": "Upload women nutrition Data",
+      "webhookId": "3110e65b-4b77-4b0a-b67f-5134c82d2269"
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload Data for blood test",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload blood test",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": " .csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        1008,
+        -1840
+      ],
+      "id": "aa831442-5a53-4de1-9442-cf310e1cf650",
+      "name": "Upload health Data",
+      "webhookId": "f4d89fb7-9104-4796-92fd-78694109a207"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -384,
+        -2272
+      ],
+      "id": "e0102718-1122-484b-b580-e106e2697b0c",
+      "name": "When chat message received",
+      "webhookId": "b4d5c095-8d55-49ae-b38a-76f721c44b06"
+    },
+    {
+      "parameters": {
+        "message": "Hi 👋 I can connect you to:\n1. Disease Bot\n2. Women Nutrition Bot\n3. Blood Test Bot\n\nReply with 1/2/3",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -2272
+      ],
+      "id": "a3e47bd4-d18c-4b1c-9044-f1234eba4df3",
+      "name": "Respond to Chat"
+    },
+    {
+      "parameters": {
+        "message": "= {{ $json.output }}",
+        "waitUserReply": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        992,
+        -2272
+      ],
+      "id": "cc4d844d-751d-41c1-8ec1-219379a6b072",
+      "name": "Respond to Chat1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        576,
+        -2064
+      ],
+      "id": "e4ad6816-629d-4990-a99c-22eeb8c5875f",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ZM78C2oOwBCrLTVr",
+          "name": "Google Gemini(PaLM) Api account 9"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.dbRow.bot_reply }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        272,
+        -2272
+      ],
+      "id": "f2eb25b1-ba08-4683-a14c-fb60aafbae22",
+      "name": "Respond to Chat2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Router Logic": {
+      "main": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Main Bot Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Technical Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sales Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Support Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loader Sub1": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Technical Data",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loader Sub2": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Sales Data",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loader Sub3": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Support Data",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Sales Data",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Sales Knowledge",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini2": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Support Data",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Support Knowledge",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini3": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Technical Data",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Technical Knowledge",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Delete a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Disease Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Technical Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload women nutrition Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Sales Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload health Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Support Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Chat": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Chat1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Main Bot Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Chat2": {
+      "main": [
+        [
+          {
+            "node": "Router Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a9badc63-d741-4d11-af7b-4efdf1537591",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0544543afe640398040389137570d256628d63fef25ed25aacde0f830115f22a"
+  },
+  "id": "4Bl7pcMTZror37gx",
+  "tags": []
+}

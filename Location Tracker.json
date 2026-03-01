@@ -1,0 +1,346 @@
+{
+  "name": "Location Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"latitude\": 13.0827,\n  \"longitude\": 80.2707,\n  \"radius\": 5000,\n  \"type\": \"hospital\",\n  \"API_Key\": \"YOUR_GOOGLE_PLACES_API_KEY\"\n}",
+        "options": {}
+      },
+      "id": "ca869c09-82c2-4a03-93ad-b79665c63475",
+      "name": "Set Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        272,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://places.googleapis.com/v1/places:searchNearby",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Goog-Api-Key",
+              "value": "AIzaSyBEMv4FtvLkesK1vRxCETNdnpAD3VZpQWM"
+            },
+            {
+              "name": "X-Goog-FieldMask",
+              "value": "places.displayName,places.formattedAddress,places.location"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={\n  \"includedTypes\": [\"hospital\"],\n  \"maxResultCount\": 10,\n  \"locationRestriction\": {\n    \"circle\": {\n      \"center\": {\n        \"latitude\":{{ $json.defaultLatitude }} ,\n        \"longitude\": {{ $json.defaultLongitude }}\n      },\n      \"radius\": 3000.0\n    }\n  },\n  \"rankPreference\": \"DISTANCE\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        -144
+      ],
+      "id": "6f7364e2-3727-48be-a32d-151766afdd17",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        0
+      ],
+      "id": "f111c26b-d0c7-4486-a25a-b565a2827c40",
+      "name": "When chat message received",
+      "webhookId": "058d1db6-5813-40c0-afd5-9ec25c3ff704",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Default coordinates if API response is empty\nconst defaultLat = $input.first().json.latitude;\nconst defaultLng = $input.first().json.longitude;\n\n// Read Google Places API results\nconst results = $input.first().json.results || [];\n\n// If no results returned, create a fallback API query location\nconst getLat = (geometry) => geometry?.location?.lat || defaultLat;\nconst getLng = (geometry) => geometry?.location?.lng || defaultLng;\n\nconst nearbyHospitals = results.map(hospital => {\n  const lat = getLat(hospital.geometry);\n  const lng = getLng(hospital.geometry);\n\n  return {\n    name: hospital.name || 'N/A',\n    address: hospital.vicinity || 'Address not available',\n    rating: hospital.rating || 'No rating',\n    totalReviews: hospital.user_ratings_total || 0,\n    latitude: lat,\n    longitude: lng,\n    mapLink: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}&query_place_id=${hospital.place_id || ''}`\n  };\n});\n\n// Return output\nreturn {\n  json: {\n    nearbyHospitals,\n    totalFound: nearbyHospitals.length,\n    searchedAt: new Date().toISOString(),\n    usedDefaultLocation: results.length === 0 ? true : false,\n    defaultLatitude: defaultLat,\n    defaultLongitude: defaultLng\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -144
+      ],
+      "id": "a9ba0477-acf2-416c-b51e-4973f02486b4",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        864,
+        -144
+      ],
+      "id": "c21094ef-0ec0-4077-a2a7-012015e52604",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0a672ba3-216c-4701-a278-7f0ca7932d8c",
+              "leftValue": "={{$json.chatInput}}",
+              "rightValue": "/(location|loc|nearby|hospital)/i",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -32,
+        0
+      ],
+      "id": "4d427bb5-9ad6-486d-83de-10b70135b8a3",
+      "name": "Check Command"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"message\": \"Invalid message ❗ Please send search keywords such as:\\n• location\\n• loc\\n• nearby\\n• hospital\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        880,
+        16
+      ],
+      "id": "d265de60-79f9-4ceb-9dd4-6f993a47fee0",
+      "name": "Respond to Webhook1"
+    }
+  ],
+  "pinData": {
+    "HTTP Request": [
+      {
+        "json": {
+          "places": [
+            {
+              "formattedAddress": "1/1, 49, Raja Muthiah Rd, Chinnaiyan Colony, Park Town, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826722,
+                "longitude": 80.2706243
+              },
+              "displayName": {
+                "text": "Meta hospital",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "1/1, 49, Raja Muthiah Rd, Chinnaiyan Colony, Park Town, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826722,
+                "longitude": 80.2706243
+              },
+              "displayName": {
+                "text": "Hunde hospital",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "NO6, 510 A, Bazzar road, Chinnaiyan Colony, Kannappar Thidal, Khajjiar nagar, Padappai, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826914,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Green pharmacy",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "37MC+38F, Chinnaiyan Colony, Kannappar Thidal, Poongavanapuram, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826914,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Cristian madical colleg",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "3rd streed, near assam home, Chinnaiyan Colony, azai, Poongavanapuram, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826914,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Joy Acharjee",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "37MC+38F, Chinnaiyan Colony, Kannappar Thidal, Poongavanapuram, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826914,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Vimaldass",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "37MC+38F, Periamet, Kannappar Thidal, Poongavanapuram, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826914,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Mani Derictor",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "37MC+38F, Periamet, Kannappar Thidal, Poongavanapuram, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826914,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Sai sahas speciality clinic",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "no.1, D.S.P.qrts melakottaiyur, vandalore, kelampakkam High road, Chinnaiyan Colony, Kannappar Thidal, Poongavanapuram, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826912,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Tula Health Centres",
+                "languageCode": "en"
+              }
+            },
+            {
+              "formattedAddress": "அலாதி அரசு ஆரம்ப சுகாதார நிலையம், சென்னை, Chennai, Tamil Nadu, India, 37MC+38F, Chinnaiyan Colony, Kannappar Thidal, Poongavanapuram, Chennai, Tamil Nadu 600003, India",
+              "location": {
+                "latitude": 13.0826912,
+                "longitude": 80.27078709999999
+              },
+              "displayName": {
+                "text": "Alamathy Primary Health Centre",
+                "languageCode": "en"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Set Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Check Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Command": {
+      "main": [
+        [
+          {
+            "node": "Set Input Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "05714e81-bd3f-4537-ad43-8752ca753ca8",
+  "meta": {
+    "instanceId": "0544543afe640398040389137570d256628d63fef25ed25aacde0f830115f22a"
+  },
+  "id": "Y3P92atbavn5aEGz",
+  "tags": []
+}

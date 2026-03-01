@@ -1,0 +1,892 @@
+{
+  "name": "Hospital Cascade Calling System",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "sos-emergency-call",
+        "options": {}
+      },
+      "id": "b3ee5b0c-7377-48fe-a8d4-3c829defb0a9",
+      "name": "WhatsApp Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -592
+      ],
+      "webhookId": "sos-emergency-call"
+    },
+    {
+      "parameters": {
+        "functionCode": "const change = $json.entry[0].changes[0].value;\nconst msg = change.messages?.[0];\nconst contact = change.contacts?.[0];\n\nif (!msg) {\n  return [];\n}\n\nconst from = msg.from;  // phone\nconst type = msg.type;  // \"text\", \"location\", \"button\", etc.\n\nlet text = '';\nlet buttonPayload = '';\nlet latitude = null;\nlet longitude = null;\n\nif (type === 'text') {\n  text = msg.text?.body || '';\n}\n\nif (type === 'button') {\n  buttonPayload = msg.button?.payload || '';\n}\n\nif (type === 'location') {\n  latitude = msg.location?.latitude || null;\n  longitude = msg.location?.longitude || null;\n}\n\nreturn [{\n  from,\n  type,\n  text,\n  buttonPayload,\n  latitude,\n  longitude,\n}];\n"
+      },
+      "id": "a77825e4-9ff4-4940-9354-5910c9948dbf",
+      "name": "Parse SOS Message",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.isSOS}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "ac6ccdb5-7bee-4823-899c-29ddb4900f4a",
+      "name": "Is SOS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -608
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.hasLocation}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "ec656d45-b951-4386-8be4-86f3b2102d11",
+      "name": "Has Location?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://nominatim.openstreetmap.org/reverse?format=json&lat={{$json.latitude}}&lon={{$json.longitude}}&addressdetails=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-sos-bot"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "492c85b5-3ee9-4d81-9088-ef8002ada4a8",
+      "name": "Get Address",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -608,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://overpass-api.de/api/interpreter?data=[out:json];(node[\"amenity\"=\"hospital\"](around:5000,{{$json.latitude}},{{$json.longitude}});way[\"amenity\"=\"hospital\"](around:5000,{{$json.latitude}},{{$json.longitude}}););out center;",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "c9fedb06-d70d-4f96-a5ad-705600085a69",
+      "name": "Find Hospitals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -752,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Get data\nconst userData = $('Parse SOS Message').first().json;\nconst addressData = $('Get Address').first().json;\nconst hospitalsData = $input.first().json;\n\n// Extract address\nconst address = addressData.display_name || `${userData.latitude}, ${userData.longitude}`;\nconst city = addressData.address?.city || addressData.address?.town || 'Unknown';\nconst state = addressData.address?.state || '';\nconst landmark = addressData.address?.road || addressData.address?.suburb || '';\n\n// Extract and process hospitals\nconst hospitals = hospitalsData.elements || [];\n\nconst hospitalsWithDistance = hospitals.map(hospital => {\n  const lat = hospital.lat || hospital.center?.lat;\n  const lon = hospital.lon || hospital.center?.lon;\n  \n  // Calculate distance\n  const R = 6371;\n  const dLat = (lat - userData.latitude) * Math.PI / 180;\n  const dLon = (lon - userData.longitude) * Math.PI / 180;\n  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +\n            Math.cos(userData.latitude * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *\n            Math.sin(dLon/2) * Math.sin(dLon/2);\n  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));\n  const distance = R * c;\n  \n  return {\n    name: hospital.tags?.name || 'Hospital',\n    phone: hospital.tags?.phone || hospital.tags?.['contact:phone'] || null,\n    address: hospital.tags?.['addr:full'] || hospital.tags?.['addr:street'] || 'Address N/A',\n    lat: lat,\n    lon: lon,\n    distance: distance.toFixed(2)\n  };\n}).filter(h => h.phone) // Only hospitals with phone numbers\n  .sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance))\n  .slice(0, 5);\n\nreturn {\n  json: {\n    userName: userData.userName,\n    phoneNumber: userData.phoneNumber,\n    latitude: userData.latitude,\n    longitude: userData.longitude,\n    address: address,\n    city: city,\n    state: state,\n    landmark: landmark,\n    hospitals: hospitalsWithDistance,\n    hospitalCount: hospitalsWithDistance.length,\n    timestamp: userData.timestamp\n  }\n};"
+      },
+      "id": "62ecc76b-02fa-4452-b85b-9491bfcb7dfa",
+      "name": "Process Hospital Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        176,
+        1072
+      ],
+      "id": "59e433d1-50fd-44f2-ba58-0bbf1185e6b0",
+      "name": "When chat message received",
+      "webhookId": "f578c83b-a8bb-41a9-a1cd-c3532b141384"
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 2,
+        "output": "={{\n  ($json.type === 'text' && $json.text.toUpperCase().includes('SOS'))\n    ? 0\n    : ($json.type === 'location'\n        ? 1\n        : -1)\n}}\n",
+        "looseTypeValidation": true
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        544,
+        1072
+      ],
+      "id": "8a2c1868-5a20-48b9-b231-090e19b72755",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "let from = '';\nlet type = 'text';\nlet text = '';\nlet buttonPayload = '';\nlet latitude = null;\nlet longitude = null;\n\n// ✅ Case 1: Real WhatsApp Webhook\nif ($json.entry && $json.entry[0]?.changes) {\n  const msg = $json.entry[0].changes[0].value.messages[0];\n\n  from = msg.from;\n  type = msg.type;\n  text = msg.text?.body || '';\n  buttonPayload = msg.button?.payload || '';\n  latitude = msg.location?.latitude || null;\n  longitude = msg.location?.longitude || null;\n\n// ✅ Case 2: n8n Chat Trigger (Testing)\n} else {\n  text =\n    $json.text ||\n    $json.chatInput ||\n    $json.message ||\n    '';\n\n  from = $json.userId || $json.chatId || 'test-user';\n  type = 'text';\n}\n\n// ✅ FINAL RETURN (VERY IMPORTANT)\nreturn [{\n  from,\n  phoneNumber: from,     // ✅ REQUIRED for WhatsApp + Twilio + DB\n  userName: 'User',      // ✅ Required for voice call script\n  type,\n  text,\n  buttonPayload,\n  latitude,\n  longitude,\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        1072
+      ],
+      "id": "4f55e973-08a9-4779-9e81-2f6a44282389",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  whatsappBody: {\n    messaging_product: \"whatsapp\",\n    to: $json.phoneNumber || $json.from,\n    type: \"text\",\n    text: {\n      body: \"Please share your live location now 📍\"\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        800
+      ],
+      "id": "bdfdcaee-b62f-4e90-a66e-94f7aae94994",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.whatsappBody.text.body }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        960,
+        800
+      ],
+      "id": "f58d2d34-e403-4a77-bb7c-c871edb7d88c",
+      "name": "Respond to Chat"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://places.googleapis.com/v1/places:searchNearby",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Goog-Api-Key",
+              "value": "AIzaSyBEMv4FtvLkesK1vRxCETNdnpAD3VZpQWM"
+            },
+            {
+              "name": "X-Goog-FieldMask",
+              "value": "places.displayName,places.formattedAddress,places.location"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={\n  \"includedTypes\": [\"hospital\"],\n  \"maxResultCount\": 10,\n  \"locationRestriction\": {\n    \"circle\": {\n      \"center\": {\n        \"latitude\":13.0826722 ,\n        \"longitude\":80.2006243\n      },\n      \"radius\": 3000.0\n    }\n  },\n  \"rankPreference\": \"DISTANCE\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1232,
+        800
+      ],
+      "id": "de0a4c27-d64d-404e-af4c-7e1001553758",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge hospitals from Google with phone numbers from database\nconst googleHospitals = $('Process Hospital Data1').first().json.hospitals;\nconst dbHospitals = $input.all().map(item => item.json);\nconst userData = $('Process Hospital Data1').first().json;\nconst sosRecordId = $('Save SOS Record').first().json.id;\n\n// Create merged list with phone numbers\nconst hospitalsWithPhones = dbHospitals.map(dbHospital => {\n  // Find matching hospital from Google results\n  const matchingGoogle = googleHospitals.find(gh => \n    gh.name.toLowerCase().includes(dbHospital.hospital_name.toLowerCase()) ||\n    dbHospital.hospital_name.toLowerCase().includes(gh.name.toLowerCase())\n  );\n  \n  return {\n    name: dbHospital.hospital_name,\n    phone: dbHospital.phone,\n    address: dbHospital.address,\n    latitude: dbHospital.latitude,\n    longitude: dbHospital.longitude,\n    distance: matchingGoogle?.distance || 'N/A'\n  };\n}).filter(h => h.phone); // Only hospitals with phone numbers\n\nif (hospitalsWithPhones.length === 0) {\n  return [{\n    json: {\n      ...userData,\n      sosRecordId: sosRecordId,\n      noPhoneNumbers: true,\n      hospitals: googleHospitals\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...userData,\n    hospitals: hospitalsWithPhones,\n    hospitalCount: hospitalsWithPhones.length,\n    currentHospitalIndex: 0,\n    sosRecordId: sosRecordId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        1920
+      ],
+      "id": "c16cb6af-7824-44c2-aacd-a686fe27c5e0",
+      "name": "Merge Hospital Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get current hospital to call from the list\nconst data = $input.first().json;\nconst currentIndex = data.currentHospitalIndex || 0;\nconst hospital = data.hospitals[currentIndex];\n\nif (!hospital) {\n  // No more hospitals to call\n  return [{\n    json: {\n      ...data,\n      noMoreHospitals: true\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...data,\n    currentHospital: hospital.name,\n    currentPhone: hospital.phone,\n    currentDistance: hospital.distance,\n    currentAddress: hospital.address,\n    noMoreHospitals: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        1952
+      ],
+      "id": "b563f010-bcb2-4e75-9ef0-dac0e680c55e",
+      "name": "Get Next Hospital to Call"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.noMoreHospitals}}",
+              "value2": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        912,
+        2192
+      ],
+      "id": "e4677123-a734-4b89-93b3-c9b0cb43c9dd",
+      "name": "Has More Hospitals?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/YOUR_TWILIO_ACCOUNT_SID/Calls.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{$json.currentPhone}}"
+            },
+            {
+              "name": "From",
+              "value": "YOUR_TWILIO_PHONE_NUMBER"
+            },
+            {
+              "name": "Twiml",
+              "value": "=<Response><Say voice=\"alice\" language=\"en-IN\" loop=\"2\">{{$json.voiceMessage}}</Say><Gather numDigits=\"1\" timeout=\"10\" action=\"https://YOUR_N8N_WEBHOOK/call-response?sosId={{$json.sosRecordId}}&hospital={{$json.currentHospital}}\"><Say>Press 1 to confirm ambulance dispatch. Press 2 to repeat message.</Say></Gather><Say>No response received. Moving to next hospital.</Say></Response>"
+            },
+            {
+              "name": "StatusCallback",
+              "value": "=https://YOUR_N8N_WEBHOOK/call-status?sosId={{$json.sosRecordId}}&index={{$json.currentHospitalIndex}}"
+            },
+            {
+              "name": "StatusCallbackEvent",
+              "value": "answered no-answer busy failed completed"
+            },
+            {
+              "name": "Timeout",
+              "value": "30"
+            },
+            {
+              "name": "MachineDetection",
+              "value": "Enable"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1104,
+        2208
+      ],
+      "id": "566df693-8fe4-4ceb-aea8-b06721cafb93",
+      "name": "Call Hospital",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "XiF8qlcFymH85gTm",
+          "name": "whatsapp Twilio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 60
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        1136
+      ],
+      "id": "3ec85918-24ef-4d83-934b-63d4d36b422b",
+      "name": "Wait for Call Response",
+      "webhookId": "call-status"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if hospital answered the call\nconst callData = $('Call Hospital').first().json;\nconst webhookData = $input.first().json;\nconst originalData = $('Get Next Hospital to Call').first().json;\n\n// Determine if call was answered\nconst callStatus = webhookData.CallStatus || callData.status || 'unknown';\nconst answeredStatuses = ['completed', 'in-progress', 'answered'];\nconst callAnswered = answeredStatuses.includes(callStatus);\n\nconst callSid = callData.sid || webhookData.CallSid || 'unknown';\n\nreturn [{\n  json: {\n    ...originalData,\n    callAnswered: callAnswered,\n    callStatus: callStatus,\n    callSid: callSid,\n    attemptedHospital: originalData.currentHospital,\n    attemptedPhone: originalData.currentPhone,\n    attemptedDistance: originalData.currentDistance\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        1136
+      ],
+      "id": "262e9803-5a4c-421b-a225-9a7e010be824",
+      "name": "Check Call Result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.callAnswered}}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        1136
+      ],
+      "id": "91a63f84-f335-4e9f-9980-0872050b9e32",
+      "name": "Was Call Answered?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sos_cascade_calls \nSET status = 'completed',\n    hospital_answered = '{{$json.attemptedHospital}}',\n    hospital_answered_phone = '{{$json.attemptedPhone}}',\n    hospitals_called = {{$json.currentHospitalIndex}} + 1,\n    call_attempts = COALESCE(call_attempts, '') || '{{$json.attemptedHospital}} (ANSWERED), ',\n    completed_at = NOW()\nWHERE id = {{$json.sosRecordId}};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2128,
+        1072
+      ],
+      "id": "ac2fd242-159a-4ee4-80d0-b91516853169",
+      "name": "Update Success",
+      "credentials": {
+        "postgres": {
+          "id": "ePTY0k7iySKFeiQt",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Calculate ETA based on distance (assuming 40 km/h average speed)\nconst distance = parseFloat(data.attemptedDistance) || 5;\nconst etaMinutes = Math.ceil(distance / 40 * 60);\n\nreturn [{\n  json: {\n    phoneNumber: data.phoneNumber,\n    message: `✅ *AMBULANCE DISPATCHED!*\\n\\n` +\n             `🏥 Hospital: ${data.attemptedHospital}\\n` +\n             `📞 Contact: ${data.attemptedPhone}\\n` +\n             `📍 Distance: ${data.attemptedDistance} km\\n\\n` +\n             `🚑 Ambulance is on the way!\\n` +\n             `⏱️ Estimated arrival: ${etaMinutes} minutes\\n\\n` +\n             `Stay calm. Help is coming!`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2288,
+        1072
+      ],
+      "id": "8c8ffd2a-17c2-4acf-987b-1ba4188e396b",
+      "name": "Format Success Message"
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.message }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        1072
+      ],
+      "id": "ce46d2d9-f228-447a-bed4-7da38a2d9556",
+      "name": "Send Success to User"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sos_cascade_calls \nSET hospitals_called = {{$json.currentHospitalIndex}} + 1,\n    call_attempts = COALESCE(call_attempts, '') || '{{$json.attemptedHospital}} (no answer), '\nWHERE id = {{$json.sosRecordId}};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2128,
+        1312
+      ],
+      "id": "23e09358-7f83-4a17-a631-525f92323824",
+      "name": "Update No Answer",
+      "credentials": {
+        "postgres": {
+          "id": "ePTY0k7iySKFeiQt",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Move to next hospital in the list\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    ...data,\n    currentHospitalIndex: data.currentHospitalIndex + 1,\n    callAttempts: [...(data.callAttempts || []), {\n      hospital: data.attemptedHospital,\n      phone: data.attemptedPhone,\n      status: 'no-answer'\n    }]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2304,
+        1312
+      ],
+      "id": "9374e852-8dcc-46dd-9118-2246685988aa",
+      "name": "Move to Next Hospital"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst topHospitals = data.hospitals.slice(0, 5);\n\nconst hospitalList = topHospitals.map((h, i) => \n  `${i+1}. *${h.name}*\\n   📞 ${h.phone}\\n   📍 ${h.distance} km`\n).join('\\n\\n');\n\nreturn [{\n  json: {\n    phoneNumber: data.phoneNumber,\n    message: `⚠️ *Unable to reach hospitals by phone*\\n\\n` +\n             `Please call directly:\\n\\n${hospitalList}\\n\\n` +\n             `🚑 *Emergency Services:*\\n` +\n             `• Ambulance: 108\\n` +\n             `• Police: 100\\n` +\n             `• Fire: 101`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        2160
+      ],
+      "id": "bfa9a2d1-fcbf-478a-bedb-f9188bd899b5",
+      "name": "Format Manual Call List"
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.message }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        1712,
+        2432
+      ],
+      "id": "ae097dfe-d070-4065-9e1c-cfcb0d195213",
+      "name": "Send Manual Call List"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hospitals from Google Places API response\nconst places = $json.places || [];\n\n// Get user data from HTTP Request node input (it has the location)\nconst inputData = $input.first().json;\n\n// Default test data for testing (REMOVE IN PRODUCTION)\nconst userLat = inputData.latitude || 13.0826722;  // Test: Chennai\nconst userLon = inputData.longitude || 80.2006243;  // Test: Chennai\nconst phoneNumber = inputData.phoneNumber || '919876543210'; // Test phone\nconst userName = inputData.userName || 'User'; // Test name\n\nif (!places || places.length === 0) {\n  return [{\n    json: {\n      error: 'No hospitals found',\n      phoneNumber: phoneNumber,\n      userName: userName,\n      latitude: userLat,\n      longitude: userLon,\n      noHospitals: true\n    }\n  }];\n}\n\n// Process and sort hospitals by distance\nconst hospitals = places.map(place => {\n  const lat = place.location?.latitude || 0;\n  const lon = place.location?.longitude || 0;\n  \n  // Calculate distance from user\n  const R = 6371; // Earth radius in km\n  const dLat = (lat - userLat) * Math.PI / 180;\n  const dLon = (lon - userLon) * Math.PI / 180;\n  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +\n            Math.cos(userLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *\n            Math.sin(dLon/2) * Math.sin(dLon/2);\n  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));\n  const distance = (R * c).toFixed(2);\n  \n  return {\n    name: place.displayName?.text || 'Hospital',\n    address: place.formattedAddress || 'Address not available',\n    latitude: lat,\n    longitude: lon,\n    distance: distance,\n    phone: null // Will be populated from database lookup\n  };\n}).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));\n\n// Create voice message for emergency call\nconst phoneSpoken = phoneNumber.split('').join(' ');\nconst voiceMessage = `This is an automated emergency alert. ` +\n  `A patient has sent an S O S alert. ` +\n  `Patient contact number is ${phoneSpoken}. ` +\n  `Emergency location coordinates are ${userLat}, ${userLon}. ` +\n  `This is a critical emergency. Please dispatch ambulance immediately. ` +\n  `Press 1 to confirm ambulance dispatch.`;\n\nreturn [{\n  json: {\n    hospitals: hospitals,\n    hospitalCount: hospitals.length,\n    phoneNumber: phoneNumber,\n    userName: userName,\n    latitude: userLat,\n    longitude: userLon,\n    voiceMessage: voiceMessage,\n    currentHospitalIndex: 0,\n    callAttempts: []\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        800
+      ],
+      "id": "ad655bfd-21df-4862-97d0-bcc1d74434ea",
+      "name": "Process Hospital Data1"
+    },
+    {
+      "parameters": {
+        "tableId": "Hospita Name",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "Hospital Namr",
+              "fieldValue": "={{ $json.hospitals[0].name }}"
+            },
+            {
+              "fieldId": "Location",
+              "fieldValue": "={{ $json.hospitals[0].latitude }},      {{ $json.hospitals[0].longitude }}"
+            },
+            {
+              "fieldId": "Contact Number",
+              "fieldValue": "={{ $json.hospitals[0].phone }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        800
+      ],
+      "id": "690e5088-a9c6-4e02-ae47-e6c1970e14c4",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "48G9rlBUNrK9LBbe",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Data from hospital processing\nconst data = $items('Process Hospital Data1')[0].json;\n// Data from DB insert (Create a row)\nconst sosRow = $items('Create a row')[0].json;\n\n// List of hospitals (we created this earlier in Process Hospital Data1)\nconst hospitals = data.hospitals || [];\n\n// Create one item per hospital with all info needed for call\nreturn hospitals.map(h => ({\n  json: {\n    // user info\n    userName: data.userName || 'Patient',\n    userPhone: data.phoneNumber,\n    latitude: data.latitude,\n    longitude: data.longitude,\n    landmark: data.landmark,\n    city: data.city,\n    state: data.state,\n\n    // DB info (optional)\n    sosId: sosRow.id,\n\n    // hospital info\n    hospitalName: h.name,\n    hospitalPhone: h.phone,\n    hospitalDistance: h.distance,\n    hospitalLat: h.lat,\n    hospitalLon: h.lon,\n\n    // voice message for Twilio\n    voiceMessage:\n      `This is an emergency SOS call. ` +\n      `Patient ${data.userName || 'a user'} needs urgent help. ` +\n      `Their phone number is ${data.phoneNumber}. ` +\n      `They are near ${data.landmark}, ${data.city}, ${data.state}. ` +\n      `Coordinates ${data.latitude}, ${data.longitude}. ` +\n      `Your hospital ${h.name} is approximately ${h.distance} kilometers away. ` +\n      `Please dispatch an ambulance immediately.`\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        800
+      ],
+      "id": "b5fef621-1389-46f1-b8e2-2f7f69b4e177",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "resource": "call",
+        "from": "+14155238886",
+        "to": "+917200268996",
+        "message": "emergency",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        1136
+      ],
+      "id": "20a14f0b-dc73-46b5-93ee-9afac693e74e",
+      "name": "Make a call",
+      "credentials": {
+        "twilioApi": {
+          "id": "SLtCU5bt3XZBPMsb",
+          "name": "Twilio account 5"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse SOS Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse SOS Message": {
+      "main": [
+        []
+      ]
+    },
+    "Is SOS?": {
+      "main": [
+        []
+      ]
+    },
+    "Has Location?": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Get Address": {
+      "main": [
+        []
+      ]
+    },
+    "Find Hospitals": {
+      "main": [
+        []
+      ]
+    },
+    "Process Hospital Data": {
+      "main": [
+        []
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Chat": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Process Hospital Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Hospital Data": {
+      "main": [
+        [
+          {
+            "node": "Get Next Hospital to Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Next Hospital to Call": {
+      "main": [
+        [
+          {
+            "node": "Has More Hospitals?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has More Hospitals?": {
+      "main": [
+        [
+          {
+            "node": "Call Hospital",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Manual Call List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Hospital": {
+      "main": [
+        []
+      ]
+    },
+    "Wait for Call Response": {
+      "main": [
+        [
+          {
+            "node": "Check Call Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Call Result": {
+      "main": [
+        [
+          {
+            "node": "Was Call Answered?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Was Call Answered?": {
+      "main": [
+        [
+          {
+            "node": "Update Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update No Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Success": {
+      "main": [
+        [
+          {
+            "node": "Format Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Message": {
+      "main": [
+        [
+          {
+            "node": "Send Success to User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update No Answer": {
+      "main": [
+        [
+          {
+            "node": "Move to Next Hospital",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move to Next Hospital": {
+      "main": [
+        [
+          {
+            "node": "Make a call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Manual Call List": {
+      "main": [
+        [
+          {
+            "node": "Send Manual Call List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Hospital Data1": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Make a call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make a call": {
+      "main": [
+        [
+          {
+            "node": "Wait for Call Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "67b01e91-e422-451b-bbbc-2111784d89a2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0544543afe640398040389137570d256628d63fef25ed25aacde0f830115f22a"
+  },
+  "id": "pIcITDzTRFnAFTjz",
+  "tags": []
+}
